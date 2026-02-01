@@ -104,11 +104,7 @@ RUN npm install -g @google/gemini-cli || echo "Gemini CLI not available via npm,
 # ============================================
 # OPENCODE (Terminal AI tool)
 # ============================================
-RUN OPENCODE_VERSION=$(curl -s https://api.github.com/repos/opencode-ai/opencode/releases/latest | jq -r .tag_name) && \
-    curl -LO "https://github.com/opencode-ai/opencode/releases/download/${OPENCODE_VERSION}/opencode_Linux_x86_64.tar.gz" && \
-    tar -xzf opencode_Linux_x86_64.tar.gz -C /usr/local/bin opencode && \
-    rm opencode_Linux_x86_64.tar.gz && \
-    chmod +x /usr/local/bin/opencode
+RUN npm install -g opencode-ai
 # ============================================
 # CUSTOM .bashrc
 # ============================================
@@ -126,6 +122,66 @@ RUN echo '' >> /root/.bashrc && \
     echo 'export PYTHONDONTWRITEBYTECODE=1' >> /root/.bashrc && \
     echo 'export PATH="/root/.local/bin:$PATH"' >> /root/.bashrc
 # ============================================
+# PERSISTENT CONFIG SYMLINKS
+# ============================================
+# Create a startup script that symlinks tool config dirs to the persistent volume.
+# This ensures auth sessions survive deploys when a Railway volume is mounted.
+RUN cat <<'EOF' > /usr/local/bin/setup-persistent-configs.sh
+#!/bin/bash
+set -e
+
+# Try to find the persistent data directory:
+# 1. Use OPENCLAW_STATE_DIR if set
+# 2. Check common Railway volume mount paths
+# 3. Fall back to /data if nothing found (will just create dirs there)
+if [ -n "$OPENCLAW_STATE_DIR" ]; then
+    DATA_ROOT="$(dirname "$OPENCLAW_STATE_DIR")"
+elif [ -d "/data" ]; then
+    DATA_ROOT="/data"
+elif [ -d "/mnt/data" ]; then
+    DATA_ROOT="/mnt/data"
+elif [ -d "/app/data" ]; then
+    DATA_ROOT="/app/data"
+else
+    echo "[setup-persistent-configs] WARNING: No persistent volume found. Tool configs will not survive deploys."
+    echo "[setup-persistent-configs] Set OPENCLAW_STATE_DIR or mount a volume at /data"
+    exit 0
+fi
+
+PERSIST_DIR="$DATA_ROOT/.tool-configs"
+mkdir -p "$PERSIST_DIR"
+
+# Map of: source_in_home -> persist_subdir
+declare -A CONFIG_DIRS=(
+    [".config/opencode"]="opencode"
+    [".config/claude"]="claude"
+    [".claude"]="claude-home"
+    [".config/gcloud"]="gcloud"
+    [".config/.wrangler"]="wrangler"
+    [".config/op"]="1password"
+)
+
+for src in "${!CONFIG_DIRS[@]}"; do
+    dest="${CONFIG_DIRS[$src]}"
+    home_path="$HOME/$src"
+    persist_path="$PERSIST_DIR/$dest"
+    
+    # Create persistent directory if it doesn't exist
+    mkdir -p "$persist_path"
+    
+    # Create parent directory for symlink
+    mkdir -p "$(dirname "$home_path")"
+    
+    # Remove existing dir/symlink and create symlink to persistent storage
+    rm -rf "$home_path"
+    ln -sf "$persist_path" "$home_path"
+done
+
+echo "[setup-persistent-configs] Symlinked tool configs to $PERSIST_DIR"
+EOF
+RUN chmod +x /usr/local/bin/setup-persistent-configs.sh
+
+# ============================================
 # APP SETUP (original template code)
 # ============================================
 WORKDIR /app
@@ -142,4 +198,5 @@ COPY src ./src
 ENV OPENCLAW_PUBLIC_PORT=8080
 ENV PORT=8080
 EXPOSE 8080
-CMD ["node", "src/server.js"]
+# Run config symlink setup before starting the server
+CMD ["/bin/bash", "-c", "/usr/local/bin/setup-persistent-configs.sh && exec node src/server.js"]
