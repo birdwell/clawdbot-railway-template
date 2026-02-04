@@ -106,6 +106,17 @@ RUN npm install -g @google/gemini-cli || echo "Gemini CLI not available via npm,
 # ============================================
 RUN npm install -g opencode-ai
 # ============================================
+# ATLASSIAN CLI (acli)
+# ============================================
+RUN mkdir -p -m 755 /etc/apt/keyrings && \
+    curl -fsSL https://acli.atlassian.com/gpg/public-key.asc | \
+    gpg --dearmor -o /etc/apt/keyrings/acli-archive-keyring.gpg && \
+    chmod go+r /etc/apt/keyrings/acli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/acli-archive-keyring.gpg] https://acli.atlassian.com/linux/deb stable main" | \
+    tee /etc/apt/sources.list.d/acli.list > /dev/null && \
+    apt-get update && apt-get install -y acli && \
+    rm -rf /var/lib/apt/lists/*
+# ============================================
 # CUSTOM .bashrc
 # ============================================
 RUN echo '' >> /root/.bashrc && \

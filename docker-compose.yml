@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # Service 1: Your Custom Agent
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+      - "18789:18789"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - OPENCLAW_GATEWAY_HOST=0.0.0.0
+      # Pass your existing Railway variable through to the container
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
+    volumes:
+      - agent_data:/data
+      - workspace_files:/root/.openclaw/workspace
+
+  # Service 2: Crabwalk (The UI)
+  crabwalk:
+    image: ghcr.io/luccast/crabwalk:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - CLAWDBOT_URL=ws://agent:18789
+      # 👇 MAGIC: This maps your existing token to the variable name Crabwalk expects
+      - CLAWDBOT_API_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
+    volumes:
+      # Mount the SAME volume to see the files
+      - workspace_files:/root/.openclaw/workspace
+    depends_on:
+      - agent
+
+volumes:
+  agent_data:
+  workspace_files:
