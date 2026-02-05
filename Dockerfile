@@ -117,6 +117,31 @@ RUN mkdir -p -m 755 /etc/apt/keyrings && \
     apt-get update && apt-get install -y acli && \
     rm -rf /var/lib/apt/lists/*
 # ============================================
+# HOMEBREW (Linuxbrew)
+# ============================================
+# Homebrew requires a non-root user on Linux
+RUN useradd -m -s /bin/bash linuxbrew && \
+    echo 'linuxbrew ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+USER linuxbrew
+RUN /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# Add brew to PATH for linuxbrew user
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
+# Install packages via Homebrew
+RUN brew install sqlite
+# Switch back to root for remaining setup
+USER root
+# Also add brew to root's PATH
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
+# ============================================
+# BUN (JavaScript runtime)
+# ============================================
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+# ============================================
+# QMD (Query Markup Documents - local search)
+# ============================================
+RUN bun install -g github:tobi/qmd
+# ============================================
 # CUSTOM .bashrc
 # ============================================
 RUN echo '' >> /root/.bashrc && \
